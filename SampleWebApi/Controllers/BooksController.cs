@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,8 @@ namespace SampleWebApi.Controllers
     [ApiController]
     public class BooksController : ControllerBase
     {
+        const int ParallelizationFactor = 16;
+
         private readonly BookContext _context;
         private readonly NameService _nameService;
         private readonly ILogger<BooksController> _logger;
@@ -44,22 +47,25 @@ namespace SampleWebApi.Controllers
 
             var bookCount = _context.Books.Count();
 
-            for (int i = 0; i < count; i++)
+            await ParallelizeAsync(async () =>
             {
-                var id = numGen.Next(bookCount);
-                var book = await _context.Books
-                    .Include(b => b.Author)
-                    .SingleOrDefaultAsync(b => b.ID == id);
-
-                // To prevent trying to deserialize a loop, use this poor-man's DTO
-                book.Author = new Author
+                while (Interlocked.Decrement(ref count) >= 0)
                 {
-                    LastName = book.Author.LastName,
-                    FirstName = book.Author.FirstName
-                };
+                    var id = numGen.Next(bookCount);
+                    var book = await _context.Books
+                        .Include(b => b.Author)
+                        .SingleOrDefaultAsync(b => b.ID == id);
 
-                books.Add(book);
-            }
+                    // To prevent trying to deserialize a loop, use this poor-man's DTO
+                    book.Author = new Author
+                    {
+                        LastName = book.Author.LastName,
+                        FirstName = book.Author.FirstName
+                    };
+
+                    books.Add(book);
+                }
+            });
 
             return Ok(books.ToArray());
         }
@@ -68,16 +74,17 @@ namespace SampleWebApi.Controllers
         [HttpPost("{count}")]
         public async Task<ActionResult> Post([FromRoute] int count)
         {
-            // TODO: Add {count} random books to the database
-            for (int i = 0; i < count; i++)
+            await ParallelizeAsync(async () =>
             {
-                var author = await GetRandomAuthorAsync();
-                var book = GetRandomBook(author);
+                while (Interlocked.Decrement(ref count) >= 0)
+                {
+                    var author = await GetRandomAuthorAsync();
+                    var book = GetRandomBook(author);
 
-                await _context.Books.AddAsync(book);
-            }
-
-            await _context.SaveChangesAsync();
+                    await _context.Books.AddAsync(book);
+                    await _context.SaveChangesAsync();
+                }
+            });
 
             return StatusCode((int)HttpStatusCode.Created);
         }
@@ -108,6 +115,21 @@ namespace SampleWebApi.Controllers
                 FirstName = firstName,
                 BirthDate = _nameService.GetBirthDate(),
             };
+        }
+
+        private Task ParallelizeAsync(Func<Task> actionAsync)
+        {
+#if PARALLELIZE
+            var tasks = new List<Task>();
+            for (var i = 0; i < ParallelizationFactor; i++)
+            {
+                tasks.Add(actionAsync());
+            }
+
+            return Task.WhenAll(tasks);
+#else
+            return actionAsync();
+#endif
         }
     }
 }

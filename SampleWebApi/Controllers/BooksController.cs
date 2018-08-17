@@ -54,7 +54,13 @@ namespace SampleWebApi.Controllers
             {
                 using (var scope = _scopeFactory.CreateScope())
                 {
+                    // By retrieving DbContext from a nested scope, we will get a unique
+                    // instance per thread worker (even if the DbContext is not registered as transient)
                     var scopedContext = scope.ServiceProvider.GetRequiredService<BookContext>();
+
+                    // Alternatively, a developer can have complete control over their DbContexts by creating them manually
+                    // (as opposed to via dependency injection)
+                    var alternativeContext = new BookContext(scope.ServiceProvider.GetRequiredService<DbContextOptions<BookContext>>());
 
                     while (Interlocked.Decrement(ref count) >= 0)
                     {

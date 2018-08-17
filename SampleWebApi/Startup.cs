@@ -27,7 +27,11 @@ namespace SampleWebApi
             services.AddSingleton<NameService>();
 
             services.AddDbContext<BookContext>(options =>
-                options.UseSqlServer(Configuration["SqlConnectionString"]));
+                options.UseSqlServer(Configuration["SqlConnectionString"]), 
+
+                // By registering the DbContext as transient, we can get unique instances
+                // for each thread worker (even within a single scope)
+                ServiceLifetime.Transient);
 
             services.AddSwaggerGen(c =>
             {

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SampleWebApi.Data;
 using SampleWebApi.Models;
@@ -22,12 +23,14 @@ namespace SampleWebApi.Controllers
 
         private readonly BookContext _context;
         private readonly NameService _nameService;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<BooksController> _logger;
 
-        public BooksController(BookContext context, NameService nameService, ILogger<BooksController> logger)
+        public BooksController(BookContext context, NameService nameService, ILogger<BooksController> logger, IServiceScopeFactory scopeFactory)
         {
             _context = context;
             _nameService = nameService;
+            _scopeFactory = scopeFactory;
             _logger = logger;
         }
 
@@ -49,21 +52,26 @@ namespace SampleWebApi.Controllers
 
             await ParallelizeAsync(async () =>
             {
-                while (Interlocked.Decrement(ref count) >= 0)
+                using (var scope = _scopeFactory.CreateScope())
                 {
-                    var id = numGen.Next(bookCount);
-                    var book = await _context.Books
-                        .Include(b => b.Author)
-                        .SingleOrDefaultAsync(b => b.ID == id);
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<BookContext>();
 
-                    // To prevent trying to deserialize a loop, use this poor-man's DTO
-                    book.Author = new Author
+                    while (Interlocked.Decrement(ref count) >= 0)
                     {
-                        LastName = book.Author.LastName,
-                        FirstName = book.Author.FirstName
-                    };
+                        var id = numGen.Next(bookCount);
+                        var book = await scopedContext.Books
+                            .Include(b => b.Author)
+                            .SingleOrDefaultAsync(b => b.ID == id);
 
-                    books.Add(book);
+                        // To prevent trying to deserialize a loop, use this poor-man's DTO
+                        book.Author = new Author
+                        {
+                            LastName = book.Author.LastName,
+                            FirstName = book.Author.FirstName
+                        };
+
+                        books.Add(book);
+                    }
                 }
             });
 
@@ -76,13 +84,18 @@ namespace SampleWebApi.Controllers
         {
             await ParallelizeAsync(async () =>
             {
-                while (Interlocked.Decrement(ref count) >= 0)
+                using (var scope = _scopeFactory.CreateScope())
                 {
-                    var author = await GetRandomAuthorAsync();
-                    var book = GetRandomBook(author);
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<BookContext>();
 
-                    await _context.Books.AddAsync(book);
-                    await _context.SaveChangesAsync();
+                    while (Interlocked.Decrement(ref count) >= 0)
+                    {
+                        var author = await GetRandomAuthorAsync(scopedContext);
+                        var book = GetRandomBook(author);
+
+                        await scopedContext.Books.AddAsync(book);
+                        await scopedContext.SaveChangesAsync();
+                    }
                 }
             });
 
@@ -98,12 +111,12 @@ namespace SampleWebApi.Controllers
                 YearPublished = _nameService.GetYear(author.BirthDate.Year + 15)                
             };
 
-        private async Task<Author> GetRandomAuthorAsync()
+        private async Task<Author> GetRandomAuthorAsync(BookContext context)
         {
             var firstName = _nameService.GetFirstName();
             var lastName = _nameService.GetLastName();
 
-            var author = await _context.Authors.Where(a => a.FirstName == firstName && a.LastName == lastName).FirstOrDefaultAsync();
+            var author = await context.Authors.Where(a => a.FirstName == firstName && a.LastName == lastName).FirstOrDefaultAsync();
             if (author != null)
             {
                 return author;

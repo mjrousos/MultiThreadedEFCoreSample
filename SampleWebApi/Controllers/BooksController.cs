@@ -22,13 +22,15 @@ namespace SampleWebApi.Controllers
         const int ParallelizationFactor = 16;
 
         private readonly BookContext _context;
+        private readonly DbContextOptions<BookContext> _contextOptions;
         private readonly NameService _nameService;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<BooksController> _logger;
 
-        public BooksController(BookContext context, NameService nameService, ILogger<BooksController> logger, IServiceScopeFactory scopeFactory)
+        public BooksController(BookContext context, DbContextOptions<BookContext> contextOptions, NameService nameService, ILogger<BooksController> logger, IServiceScopeFactory scopeFactory)
         {
             _context = context;
+            _contextOptions = contextOptions;
             _nameService = nameService;
             _scopeFactory = scopeFactory;
             _logger = logger;
@@ -52,19 +54,21 @@ namespace SampleWebApi.Controllers
 
             await ParallelizeAsync(async () =>
             {
+                // Option 2: Create DbContexts as needed using DbContextOptions<BookContext> from DI
+                // Alternatively, a developer can have complete control over their DbContexts by creating them manually
+                // (as opposed to via dependency injection)
+                var newContext = new BookContext(_contextOptions);
+
                 using (var scope = _scopeFactory.CreateScope())
                 {
+                    // Option 3: Create a new IServiceScope for each parallel execution
                     // By retrieving DbContext from a nested scope, we will get a unique
                     // instance per thread worker (even if the DbContext is not registered as transient)
                     var scopedContext = scope.ServiceProvider.GetRequiredService<BookContext>();
 
-                    // Alternatively, a developer can have complete control over their DbContexts by creating them manually
-                    // (as opposed to via dependency injection)
-                    var alternativeContext = new BookContext(scope.ServiceProvider.GetRequiredService<DbContextOptions<BookContext>>());
-
                     while (Interlocked.Decrement(ref count) >= 0)
                     {
-                        var id = numGen.Next(bookCount);
+                        var id = numGen.Next(bookCount) + 1;
                         var book = await scopedContext.Books
                             .Include(b => b.Author)
                             .SingleOrDefaultAsync(b => b.ID == id);
@@ -142,7 +146,7 @@ namespace SampleWebApi.Controllers
             var tasks = new List<Task>();
             for (var i = 0; i < ParallelizationFactor; i++)
             {
-                tasks.Add(actionAsync());
+                tasks.Add(Task.Run(() => actionAsync()));
             }
 
             return Task.WhenAll(tasks);

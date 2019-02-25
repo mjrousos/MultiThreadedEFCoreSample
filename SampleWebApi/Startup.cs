@@ -29,6 +29,7 @@ namespace SampleWebApi
             services.AddDbContext<BookContext>(options =>
                 options.UseSqlServer(Configuration["SqlConnectionString"]), 
 
+                // Option 1: Transient DB Context
                 // By registering the DbContext as transient, we can get unique instances
                 // for each thread worker (even within a single scope)
                 ServiceLifetime.Transient);

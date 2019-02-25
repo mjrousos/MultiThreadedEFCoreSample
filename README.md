@@ -1,6 +1,6 @@
 # Multi-Threaded Entity Framework Core Samples
 
-Entity Framework DB context's [are not thread safe](https://docs.microsoft.com/ef/core/querying/async). If an ASP.NET Core app 
+Entity Framework DB contexts [are not thread safe](https://docs.microsoft.com/ef/core/querying/async). If an ASP.NET Core app 
 wishes to process requests in a multi-threaded way while using Entity 
 Framework Core, it's important to carefully manage DbContexts so that a 
 single context isn't used on multiple threads simultaneously.
@@ -39,16 +39,16 @@ used by that API unless the context is explicitly passed as a parameter
 (since every instance of the context retrieved from DI will be unique).
 
 ### Fix 2: Create DbContexts, as needed, from DI-delivered DbContextOptions
-A second option (which is similar to the last one) is to create DbContexts
-directly (using the DbContext constructor) instead of retrieving them from
+A second option (which is similar to the first one) is to create DbContexts
+directly (using the DbContext constructor) instead of retrieving them via
 dependency injection. This is possible because the `DbContextOptions` needed 
-to create a DbContext can be in dependency injection and will cause no 
-threading issues if reused in parallel.
+to create a DbContext can be retrieved from the dependency injection 
+container and will cause no threading issues if reused in parallel.
 
 Depending on the needs of the project, other (non-parallel) code paths can 
 still retrieve DbContexts from DI or create them from options, as necessary.
 
-**Drawbacks:** If DbContexts are sometimes retrieveed from DI and sometimes 
+**Drawbacks:** If DbContexts are sometimes retrieved from DI and sometimes 
 created from options, there could be issues with dependencies sometimes 
 sharing a context with a caller and other times not. If the DbContexts are 
 always shared, this becomes similar to fix #1 except with explicit DbContext 
@@ -59,13 +59,13 @@ If it is desirable for DbContexts to continue having scoped lifetimes, it is
 still possible to retrieve unique DbContexts for different parallel workers 
 by creating new service scopes for each of the workers. This will maintain 
 scoped behavior for the DbContext (so that dependencies retrieving from 
-the DI container will get the same isntance, for example).
+the DI container will get the same instance, for example).
 
-**Drawbacks:** The drawback of this approach is that creating a new scope for 
-the parallel workers means that all scoped services resolved by them or their 
-dependencies will be distinct from those used by other workers or from the 
-workers' calling method. Depending on the project's behavior this may by
-undesirable.
+**Drawbacks:** The drawback of this approach is that creating new scopes for 
+the parallel workers means that all scoped services (not just DbContexts) 
+resolved by them or their dependencies will be distinct from those used by 
+other workers or from those in the parent request scope. Depending on the 
+project's behavior this may by undesirable.
 
 ## Running the sample
 

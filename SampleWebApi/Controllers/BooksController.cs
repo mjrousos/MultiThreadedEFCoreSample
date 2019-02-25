@@ -42,7 +42,7 @@ namespace SampleWebApi.Controllers
         // Adds and then removes a number of books (specified by the count parameter)
         // This API uses the DbContext on multiple threads and, therefore, will fail.
         [HttpPost("broken/{count}")]
-        public async Task<ActionResult> ModifyBooks([FromRoute] int count)
+        public async Task<ActionResult> ModifyBooks([FromRoute] int count = 100)
         {
             await ParallelizeAsync(async () =>
             {
@@ -68,7 +68,7 @@ namespace SampleWebApi.Controllers
         // This API fixes the EF Context multithreaded issue by using a transient DB context
         // and getting a separate instance for each execution task.
         [HttpPost("fix1/{count}")]
-        public async Task<ActionResult> ModifyBooksFix1([FromRoute] int count)
+        public async Task<ActionResult> ModifyBooksFix1([FromRoute] int count = 100)
         {
             await ParallelizeAsync(async () =>
             {
@@ -98,7 +98,7 @@ namespace SampleWebApi.Controllers
         // This API fixes the EF Context multithreaded issue by creating separate contexts
         // for each worker using shared DbContext options from DI.
         [HttpPost("fix2/{count}")]
-        public async Task<ActionResult> ModifyBooksFix2([FromRoute] int count)
+        public async Task<ActionResult> ModifyBooksFix2([FromRoute] int count = 100)
         {
             await ParallelizeAsync(async () =>
             {
@@ -129,7 +129,7 @@ namespace SampleWebApi.Controllers
         // This API fixes the EF Context multithreaded issue by using using
         // separate DI scopes for each parallel worker.
         [HttpPost("fix3/{count}")]
-        public async Task<ActionResult> ModifyBooksFix3([FromRoute] int count)
+        public async Task<ActionResult> ModifyBooksFix3([FromRoute] int count = 100)
         {
             await ParallelizeAsync(async () =>
             {
